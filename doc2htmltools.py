@@ -2,6 +2,7 @@ import os
 import re
 import json
 import requests
+import sys
 from bs4 import BeautifulSoup
 import chardet
 
@@ -184,6 +185,36 @@ def modify_margin_left(html_content):
     
     return str(soup)
 
+# ============ NEW FUNCTION FOR TEXT-INDENT ============
+
+def modify_text_indent(html_content):
+    soup = BeautifulSoup(html_content, 'html.parser')
+    elements_with_style = soup.find_all(lambda tag: tag.has_attr('style'))
+    
+    for element in elements_with_style:
+        style = element['style']
+        pattern = r'text-indent\s*:\s*(-?\d+(?:\.\d+)?)(px|em|rem|%|pt|vh|vw|cm|mm|in|pc|ex|ch)?'
+        
+        def replace_indent(match):
+            value = float(match.group(1))
+            unit = match.group(2) or ''
+            
+            # If negative, multiply by 2 (make it more negative)
+            if value < 0:
+                new_value = value * 2
+                if new_value.is_integer():
+                    new_value = int(new_value)
+                return f"text-indent: {new_value}{unit}"
+            else:
+                # If positive, do nothing (return original)
+                return match.group(0)
+        
+        modified_style = re.sub(pattern, replace_indent, style)
+        if style != modified_style:
+            element['style'] = modified_style
+    
+    return str(soup)
+
 # ============ COMBINED MAIN ============
 
 def main():
@@ -194,14 +225,25 @@ def main():
     if not api_url or not api_token:
         raise ValueError("api_url and api_token must be set in config.json")
 
-    html_file_path = input("Enter the path to your HTML file: ").strip()
+    if len(sys.argv) < 2:
+        print("Usage: python script.py <html_file> [-m] [-i]")
+        print("  -m: Halve margin-left values")
+        print("  -i: Double negative text-indent values")
+        sys.exit(1)
+
+    html_file_path = sys.argv[1]
+    margin_flag = "-m" in sys.argv
+    indent_flag = "-i" in sys.argv
 
     modified_content, detected_encoding, raw_html_bytes = process_html_file(html_file_path, api_url, api_token)
 
-    modified_content = modify_margin_left(modified_content)
+    if margin_flag:
+        modified_content = modify_margin_left(modified_content)
+
+    if indent_flag:
+        modified_content = modify_text_indent(modified_content)
 
     save_modified_html(html_file_path, modified_content, detected_encoding, raw_html_bytes)
 
 if __name__ == "__main__":
     main()
-
